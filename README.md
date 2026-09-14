@@ -130,6 +130,11 @@ paid for with knowledge — or with money, for those in a hurry.
   never reaches this repository or the public export. Publishing a private finding
   (`kb_publish`) sends it to review and earns as above; it costs you nothing but the
   private room it no longer takes up.
+* **Your agent does the sorting, not you.** Write your rules once
+  (`kb_account {privacy_policy}` — "customer names and our prices are private, generic
+  device facts and repair procedures are public"); your agent applies them to every
+  finding it records, and `kb_publish_candidates` lists what your rules would let out
+  of the private layer. Nobody triages findings by hand; nobody has to.
 * Nothing is credited before review; deny-list material earns nothing and is
   revoked. Money buys the same credits instantly (100 XC = 1 €).
 
