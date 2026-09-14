@@ -105,6 +105,34 @@ python tools/kb/denylist.py                  # nothing that must not be publishe
 git commit -am "finding: <one line>" && open a PR
 ```
 
+## The knowledge economy (how the base grows)
+
+The knowledge base is **two-way**: it is downloaded *and* uploaded, and knowledge is
+paid for with knowledge — or with money, for those in a hurry.
+
+| tier | where | what | price |
+|---|---|---|---|
+| public slice | this repository (`kb/**`) | curated guides + findings older than the 12-month embargo, or donated by their author | free, CC BY 4.0 |
+| live KB | xelth server (`kb_search`, `kb_brief`, slice pull, evidence artefacts) | every shared finding including fresh ones, semantic search, per-device procedures | credits (XC) |
+| tenant KB | xelth server, firm-scoped | a firm's own private findings | included in the firm licence |
+
+* Every new account starts with **300 XC** — enough for a couple of projects. A
+  finding returned in full costs 1 XC, once per account; a whole slice is priced at
+  50 % of its findings; findings you wrote yourself are free to you.
+* You refill by **contributing**: a merged proposal is reviewed by us and scored
+  0–3 (duplicate / helpful note / verified fact with evidence / new capability or a
+  correction of a wrong finding). Payout = score × 50 XC × a volume factor for the
+  evidence you brought (files, captures, boards; capped ×3). A second party
+  verifying it later adds 50 %. For twelve months you also earn a **10 % royalty**
+  on what others spend on your finding — quality keeps paying, spam does not.
+* Nothing is credited before review; deny-list material earns nothing and is
+  revoked. Money buys the same credits instantly (100 XC = 1 €).
+
+A finding starts in the live KB, earning its author, and ages into this repository.
+`python tools/kb/kb_pull.py <slice> --online` fetches the public export straight
+from the server (`GET /api/kb/public?anchor=…`), the same content as `kb/`, always
+current.
+
 ## Licence boundary
 
 * **Code** — `tools/`, `recipes/`, `firmware/`, `agents/`, `proposals/`, CI: **MIT**

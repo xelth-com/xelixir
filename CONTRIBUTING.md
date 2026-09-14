@@ -4,7 +4,7 @@ This repository is a knowledge base with tools attached. The contract below is
 short on purpose — it is meant to be read by a human in two minutes and by an
 agent in one.
 
-## The contract (5 points)
+## The contract (6 points)
 
 ### 1. Work on a slice
 
@@ -102,6 +102,19 @@ yours to ship; a change to the shared structure is ours to make.*
 
 Register your agent with `agents/<name>.md` — see `agents/README.md` for the
 schema and what the `proven` label means.
+
+### 6. What a merged finding earns
+
+A proposal that passes review is ingested into the live knowledge base under your
+name and **scored** by us — 0 (duplicate, unsupported), 1 (a note that helps),
+2 (a verified fact with evidence), 3 (a new capability, or a correction of a wrong
+finding). The score, times 50 credits, times a volume factor for the evidence you
+brought, lands on your account; a later independent verification adds 50 %, and
+for twelve months you receive 10 % of what other users spend on that finding.
+Credits buy access to the live base (fresh findings, artefacts, semantic search) —
+see `README.md` § *The knowledge economy*. Corrections (`supersedes:`) are the
+best-paid class because they fix the base for everyone. Deny-list material earns
+nothing and, if it slipped through, is revoked together with its credits.
 
 ## Mechanics
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pull one knowledge slice - offline from this repository, or (later) online.
+"""Pull one knowledge slice - offline from this repository, or online from the public export.
 
     python tools/kb/kb_pull.py chips/s5pv210              # print guide + findings
     python tools/kb/kb_pull.py chips/s5pv210 --list       # one line per finding
@@ -12,7 +12,7 @@ of this checkout. That is deliberate: a repair happens in a workshop, sometimes 
 a bench with no network and a board that is the only interesting thing in the
 room. The knowledge has to be on the laptop already.
 
-Online mode (`--online`) is a documented stub - see ONLINE_ENDPOINT below.
+Online mode (`--online`) reads the public export - see ONLINE_ENDPOINT below.
 
 Read the slice BEFORE touching a tool that names it. Most of the traps are already
 written down; the rest is what you are about to discover, and that one belongs in
@@ -26,11 +26,37 @@ import sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 KB = os.path.join(ROOT, "kb")
 
-# The free tier of xelth's knowledge base will serve the same slices over HTTP so
-# that a tool can pull a slice it does not have. NOT YET AVAILABLE - the export
-# bot (server -> findings.yaml) and the public endpoint are still to be built, and
-# until they are, --online says so instead of pretending.
-ONLINE_ENDPOINT = "https://xelth.com:3221/kb/{slice}"
+# The public export of xelth's knowledge base: the same findings that age into
+# kb/**/findings.yaml (12-month embargo, or donated by their author), served
+# unauthenticated as a JSON list in the findings.yaml shape. A slice maps to the
+# anchor slug it is published under (the last path element, e.g. chips/s5pv210
+# -> s5pv210, research/nand-retention -> nand-retention).
+ONLINE_ENDPOINT = "https://xelth.com:3221/api/kb/public?anchor={anchor}&limit={limit}"
+ONLINE_TIMEOUT = 20
+
+
+def fetch_online(slice_name, limit=500):
+    """Return (anchor, findings-list) from the public export, or raise OSError."""
+    import json
+    import urllib.request
+    anchor = slice_name.rstrip("/").split("/")[-1]
+    url = ONLINE_ENDPOINT.format(anchor=anchor, limit=int(limit))
+    req = urllib.request.Request(url, headers={"User-Agent": "xelth-open kb_pull"})
+    with urllib.request.urlopen(req, timeout=ONLINE_TIMEOUT) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    if isinstance(data, dict):
+        data = data.get("findings", [])
+    return anchor, data
+
+
+def dump_findings(items):
+    """findings list -> YAML text (pyyaml if present, else a plain block dump)."""
+    try:
+        import yaml
+        return yaml.safe_dump(items, sort_keys=False, allow_unicode=True, width=88)
+    except ImportError:
+        import json
+        return json.dumps(items, indent=2, ensure_ascii=False)
 
 
 def find_slices():
@@ -106,7 +132,8 @@ def main(argv=None):
     ap.add_argument("--guide", action="store_true", help="print README.md only")
     ap.add_argument("--out", metavar="DIR", help="copy the slice into DIR/<slice>")
     ap.add_argument("--online", action="store_true",
-                    help="fetch from the public endpoint (not yet available)")
+                    help="fetch the slice's findings from the public export on the server")
+    ap.add_argument("--limit", type=int, default=500, help="--online: max findings")
     a = ap.parse_args(argv)
 
     if a.slices or not a.slice:
@@ -115,12 +142,30 @@ def main(argv=None):
         return 0
 
     if a.online:
-        print("online mode is not yet available.")
-        print("  endpoint (planned): " + ONLINE_ENDPOINT.format(slice=a.slice))
-        print("  the server -> findings.yaml export bot and the public free-tier")
-        print("  endpoint are still to be built. Until then a slice travels with")
-        print("  this repository: clone it, or `--out` a copy next to your project.")
-        return 3
+        try:
+            anchor, items = fetch_online(a.slice, a.limit)
+        except Exception as e:  # network, HTTP, JSON - all the same to a workshop laptop
+            print("online pull failed: %s" % e)
+            print("  the slice still travels with this repository: `--out` a copy.")
+            return 3
+        if a.brief:
+            print("public export, anchor=%s" % anchor)
+            for f in items:
+                print("  %-28s %-16s %-9s %-5s %s" % (
+                    f.get("id", "?"), f.get("kind", "?"), f.get("status", "?"),
+                    f.get("confidence", "?"), (f.get("text") or "").strip()[:96]))
+            print("  %d finding(s)" % len(items))
+            return 0
+        text = dump_findings(items)
+        if a.out:
+            dest = os.path.join(a.out, a.slice.replace("/", os.sep))
+            os.makedirs(dest, exist_ok=True)
+            fn = os.path.join(dest, "findings.online.yaml")
+            open(fn, "w", encoding="utf-8").write(text)
+            print("wrote %s (%d finding(s))" % (fn, len(items)))
+        else:
+            sys.stdout.write(text)
+        return 0
 
     slug, path = resolve(a.slice)
 
