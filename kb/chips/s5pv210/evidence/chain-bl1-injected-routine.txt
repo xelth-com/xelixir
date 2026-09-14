@@ -1,0 +1,113 @@
+Capstone listing of the routine tools/s5pv210-uart-rescue/build_chain_bl1.py INJECTS
+====================================================================================
+
+This is OUR code and nobody else's: the ~53 ARM instructions plus an 11-word literal
+pool that the generator writes into the first stage in place of its storage-copy
+routine. Nothing of the host image is reproduced here — the surrounding bytes, the
+addresses the generator finds by disassembly, and the image itself stay with
+whoever owns them.
+
+Offsets are relative to the start of the injected routine (`S` in the generator).
+`S` itself is wherever the dead storage-copy cluster of YOUR first stage begins;
+the generator prints it. Regenerate this listing for your own build with:
+
+    python tools/s5pv210-uart-rescue/build_chain_bl1.py --src <your image> --disasm
+
+Register conventions inside the routine: r4 = current DDR write pointer, r5 = end
+pointer, ip = the ROM download entry point, r0 = its return code.
+
+--- header transaction: LE32(total second-stage length) into SRAM scratch ---------
+  the ROM downloader waits only ~1.5 s for a host, so the SAME call is retried
+  until it returns 0; a revision that ignored the return code jumped into
+  unwritten DDR (see kb_finding:ka4th2tuclj4es4gbad2)
+
+  +0x00  ldr     r2, [pc, #0xb0]          ; = SCRATCH      (internal SRAM, 4 bytes)
+  +0x04  mov     r0, #2                   ; port = UART2
+  +0x08  mov     r1, #0x23                ; mode
+  +0x0c  ldr     r3, [pc, #0xa4]          ; = 0x00015400   (ROM per-packet max)
+  +0x10  ldr     ip, [pc, #0xa4]          ; = 0xD0008640   (ROM uart_download)
+  +0x14  blx     ip
+  +0x18  cmp     r0, #0
+  +0x1c  bne     #+0x00                   ; retry the header until it returns 0
+  +0x20  ldr     r0, [pc, #0x90]          ; = SCRATCH
+  +0x24  ldr     r0, [r0]                 ; r0 = total length of the second stage
+  +0x28  ldr     r4, [pc, #0x84]          ; = DEST_BASE    (its link address in DDR)
+  +0x2c  add     r5, r4, r0               ; r5 = end pointer
+
+--- slice loop: the second stage straight into DDR --------------------------------
+  +0x30  cmp     r4, r5
+  +0x34  bcs     #+0x68                   ; done
+  +0x38  mov     r0, #2
+  +0x3c  mov     r1, #0x23
+  +0x40  mov     r2, r4                   ; same destination on a retry
+  +0x44  ldr     r3, [pc, #0x6c]          ; = 0x00015400
+  +0x48  ldr     ip, [pc, #0x6c]          ; = 0xD0008640
+  +0x4c  blx     ip
+  +0x50  cmp     r0, #0
+  +0x54  bne     #+0x38                   ; retry this slice; r4 is NOT advanced
+  +0x58  ldr     r0, [pc, #0x5c]          ; = LENPTR (where the ROM stores rx len)
+  +0x5c  ldr     r0, [r0]
+  +0x60  add     r4, r4, r0               ; advance by what actually landed
+  +0x64  b       #+0x30
+
+--- replay of the ROM's NAND-controller + ECC bring-up ----------------------------
+  the ROM performs this ONLY in its successful-NAND-boot branch, i.e. exactly the
+  branch skipped after "Nand RnB Detect Error"; without it U-Boot 1.3.4 spins
+  forever on NFECCSTAT in the first ECC-protected page read
+  (see kb_finding:1ls66vjcbwlpm9394x9o)
+
+  +0x68  ldr     r0, [pc, #0x54]          ; = 0xB0E00000   NAND controller base
+  +0x6c  ldr     r1, [pc, #0x54]          ; = NF_CONF: 0x01800000 | the value THIS
+                                          ;   image's own lowlevel_init programs
+                                          ;   (never a constant — see
+                                          ;   kb_finding:wjca6hkifegra44evx20)
+  +0x70  str     r1, [r0]                 ; NFCONF
+  +0x74  mov     r1, #0xc5
+  +0x78  str     r1, [r0, #4]             ; NFCONT: MODE | nCE0 asserted | 0x40 | 0x80
+  +0x7c  mov     r1, #0xf0
+  +0x80  str     r1, [r0, #0x28]          ; NFSTAT: W1C every transition-detect bit
+  +0x84  ldr     r2, [pc, #0x44]          ; = 0xB0E20000   ECC engine base
+  +0x88  ldr     r3, [r2]                 ; NFECCCONF
+  +0x8c  ldr     r1, [pc, #0x40]          ; = 0xFC00FFF0   (~0x03FF000F)
+  +0x90  and     r3, r3, r1
+  +0x94  ldr     r1, [pc, #0x3c]          ; = 0x01FF0003   MsgLen 512 B, ECC type 3
+  +0x98  orr     r3, r3, r1
+  +0x9c  str     r3, [r2]                 ; NFECCCONF
+  +0xa0  ldr     r3, [r2, #0x20]          ; NFECCCONT
+  +0xa4  bic     r3, r3, #0x03000000
+  +0xa8  bic     r3, r3, #0x00010000
+  +0xac  str     r3, [r2, #0x20]
+  +0xb0  ldr     r3, [r2, #0x30]          ; NFECCSTAT
+  +0xb4  orr     r3, r3, #0x03000000
+  +0xb8  str     r3, [r2, #0x30]          ; W1C the sticky ENC/DEC done bits
+  +0xbc  mov     r1, #0x10
+  +0xc0  str     r1, [r0, #0x28]          ; NFSTAT: clear RnB transition detect
+
+  NOT EMITTED (recommended addition, see kb/chips/s5pv210/README.md section 5):
+  the chip RESET the ROM issues inside its ready/busy probe —
+  NFCONT=0xC1, NFSTAT=0x10, NFCMMD=0xFF, poll NFSTAT[4] with a bounded counter,
+  NFSTAT=0x10, NFCONT=0xC5.
+
+--- tell the bootloader it booted from NAND, then fall into its own tail ----------
+  +0xc4  ldr     r0, [pc, #0x0c]          ; = 0xE010F000   INF_REG base
+  +0xc8  mov     r1, #2                   ; 2 = NAND
+  +0xcc  str     r1, [r0, #0xc]           ; INFORM3
+  +0xd0  b       <the first stage's own stack-set / bss-clear / jump block>
+
+--- literal pool (11 words, immediately after the code) ---------------------------
+  +0xd4  .word   DEST_BASE      second stage's link address in DDR
+  +0xd8  .word   0xD0008640     ROM uart_download entry
+  +0xdc  .word   0x00015400     ROM per-packet maximum
+  +0xe0  .word   SCRATCH        free internal SRAM for the 4-byte header packet
+  +0xe4  .word   LENPTR         where the ROM stores the last received length
+  +0xe8  .word   0xE010F000     INF_REG base
+  +0xec  .word   0xB0E00000     NAND controller base
+  +0xf0  .word   NF_CONF        0x01800000 | this image's own NFCONF literal
+  +0xf4  .word   0xB0E20000     ECC engine base
+  +0xf8  .word   0xFC00FFF0     NFECCCONF clear mask
+  +0xfc  .word   0x01FF0003     NFECCCONF value: MsgLength 512 B, 8-bit ECC
+
+Total 0x100 bytes. The generator asserts that code and pool both fit inside the
+region that becomes unreachable once the storage-copy dispatcher is redirected, so
+a first stage whose dead cluster is smaller than this is refused rather than
+silently corrupted.

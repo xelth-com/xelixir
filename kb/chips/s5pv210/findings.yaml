@@ -1,0 +1,345 @@
+# kb/chips/s5pv210/findings.yaml
+#
+# Findings exported from xelth's knowledge base for the anchors published in this
+# slice, SANITISED: vendor product names, unit/board serials, vendor file offsets,
+# vendor stop words and vendor NAND layouts are removed and replaced by the class
+# they belong to. The MEANING is never edited — only the vendor specifics.
+#
+# Server ids are kept so a slice round-trips (export -> contribute -> re-import).
+# A correction is a NEW finding with `supersedes:`, never an edit in place.
+#
+# Licence: CC BY 4.0 (see ../../LICENSE). Schema: tools/kb/check_findings.py.
+
+- id: kb_finding:iesh8tso6j1n8z4cc245
+  kind: protocol
+  anchors: {chip: s5pv210, concept: irom_uart_boot}
+  confidence: high
+  status: verified
+  text: >-
+    S5PV210 / S5PC110 mask-ROM boot order and UART-boot protocol, decoded from a
+    disassembly of the S5PC110 iROM and cross-checked against Samsung's iROM
+    application note. Boot device order: the OM-strap-selected primary device
+    (NAND on a NAND board) -> if the first-stage checksum fails, SD/MMC channel 2
+    -> if no card, UART boot on UART2 -> USB boot. UART2 runs at 115200 8N1, clock
+    MPLL / 66.7 MHz. Protocol: the ROM streams 0xAA continuously (5 attempts,
+    ~300 ms apart) awaiting a host 0xAA; then streams 0xCC awaiting a host 0xCC;
+    then reads LE32(payload_len + 6), then payload_len raw bytes which it stores
+    at 0xD0020000, then an LE16 checksum which is the 16-bit running sum of the
+    payload bytes recomputed from memory as it stores; on a match it replies
+    0xBB 0xBB 0xBB and jumps to 0xD0020000 (UART and USB boot expect no 16-byte
+    header there). Maximum payload 0x15400 = 85 KB per transaction. Errors are
+    printed as plain text on UART2: "Nand RnB Detect Error", "SD Init Error",
+    "Uart negotiation Error", "Uart Data Length Over", "Uart Check Sum Error",
+    "Enumeration TimeOut Error". The ROM's download routine is callable as a
+    subroutine at 0xD0008640; its negotiate helper is at 0xD00085D0 and its byte
+    read at 0xD0008594. Reverse engineering for interoperability is lawful in the
+    EU (Directive 2009/24/EC art. 6); the ROM dump and the vendor application note
+    are not redistributable and are not published here.
+  evidence:
+    kind: re_function
+    summary: >-
+      Static disassembly of the S5PC110 mask ROM (our own listing, not published):
+      the boot-device chain, the negotiate helper, the byte-read poll and the
+      download entry point, with the error strings resolved from the ROM's own
+      .rodata.
+  author: xelth
+  date: 2026-09-13
+
+- id: kb_finding:es2bl4vrrdsb9b1u47lo
+  kind: re_fact
+  anchors: {chip: s5pv210, concept: irom_uart_boot}
+  confidence: high
+  status: verified
+  text: >-
+    The host frame of the S5PV210 iROM UART boot must be written CONTIGUOUSLY, and
+    the widely repeated advice to wait for the ROM to go quiet is wrong. The ROM's
+    byte-read routine is a ~1000-iteration FIFO poll (~0.6 ms), not a timed wait,
+    and the four length bytes are read with that same short poll immediately after
+    the ROM matches the host's 0xCC. The host must therefore write
+    0xCC + LE32(len+6) + payload + LE16(sum16) as ONE contiguous stream with no
+    gap; the payload loop itself is unbounded, but the two checksum bytes use the
+    short poll again and must follow the last payload byte back-to-back. Echoing
+    0xCC and then waiting for the target's 0xCC stream to STOP before sending the
+    length (the intuitive approach, and the wall the 2011 XDA "UnBrickable" work on
+    this SoC family hit) makes the poll return 0xFF four times, the length reads as
+    0xFFFFFFFF and the ROM prints "Uart Data Length Over" about 3 s later and falls
+    through to USB boot. Second consequence of the same design: the 0xBB 0xBB 0xBB
+    receipt is usually LOST, because the loaded code re-initialises the UART at
+    once — absence of 0xBB together with absence of error text means success.
+    Measured throughput at 115200: 8192 B in ~712 ms.
+  evidence:
+    kind: re_function
+    summary: >-
+      Disassembly of the ROM's negotiate helper (sends one byte, polls once,
+      repeats for 5 x 300 ms) and of its byte-read poll, plus two bench runs whose
+      only difference was the gap before the length field.
+  author: xelth
+  date: 2026-09-13
+
+- id: kb_finding:epnlbwufeyqh0ihccyis
+  kind: repair_heuristic
+  anchors: {chip: s5pv210, concept: nand_boot_bypass}
+  confidence: high
+  status: verified
+  text: >-
+    Pre-Linux rescue path for an S5PV210 / S5PC110 board whose rootfs is damaged so
+    that init never reaches a getty and there is no console shell: force the mask
+    ROM to abandon NAND boot by shorting two NAND data lines to each other at
+    power-on, which corrupts its read of the first stage, fails the checksum and
+    sends it down SD -> UART -> USB. On a TSOP-48 x8 NAND the data lines are
+    IO0-IO3 = pins 29-32 and IO4-IO7 = pins 41-44 (pins 45-48 NC); the pair that is
+    reliable to bridge by hand is the 8th/9th pin from the pin-48 corner, i.e. pins
+    40/41 = IO4/IO5. NEVER short Vcc/Vss (pins 12/13 and 36/37). Always short an
+    already-powered-OFF board and then apply power, never bridge a live board.
+    Hold the short until the fallback is confirmed (the ROM retries NAND for tens
+    of seconds, so a 2 s short can let a retry succeed); with no indicator, hold
+    ~10 s. When it works the ROM prints "Nand RnB Detect Error" then "SD Init
+    Error" and there is NO bootloader banner; when the contact is weak the first
+    stage reads fine and the board simply boots normally, which is the same thing
+    the failure looks like. After the short is released NAND reads normally again,
+    so the loaded first stage can still pull a second stage — or a kernel — from it.
+  author: xelth
+  date: 2026-09-13
+
+- id: kb_finding:0b8qha5wfvtme1fnis1b
+  kind: observation
+  anchors: {chip: s5pv210, concept: nand_boot_bypass}
+  confidence: med
+  status: verified
+  text: >-
+    Field indicator for the ROM fallback and for first-stage acceptance on an
+    S5PV210 board with no console attached: boards of this class carry a small row
+    of status LEDs driven by the boot path, and the pattern distinguishes the three
+    states you care about. On the board family we worked on there are three LEDs;
+    a normal boot lights only the middle one, the ROM fallback (SD -> UART -> USB,
+    entered because the NAND-short trick made the first-stage read fail) lights ALL
+    THREE dimly at once within about a second of power-on, and when a first stage
+    delivered over UART passes the ROM's checksum and starts executing the LEDs
+    revert to the normal pattern. So without a scope or a console the LEDs tell you
+    (a) whether the short worked — release it as soon as they change — and (b)
+    whether the upload was accepted. Establish your own board's two patterns once
+    with a console attached; after that you can work blind.
+  evidence:
+    kind: observation
+    summary: >-
+      Observed 2026-09-13 during a UART-boot bench session on a healthy board of
+      this family, across repeated power cycles with and without the short.
+  author: xelth
+  date: 2026-09-13
+
+- id: kb_finding:74tb9a2xwhrsq1x4onwp
+  kind: re_fact
+  anchors: {chip: s5pv210, concept: uart_mapping}
+  confidence: high
+  status: verified
+  text: >-
+    UART mapping of an S5PV210 board of this lineage, read from
+    /proc/tty/driver/ttySAC on a healthy unit. The device nodes are
+    /dev/s3c2410_serialN, NOT ttySACN, even though the kernel console argument is
+    console=ttySAC1. UART0 (0xE2900000) idle; UART1 (0xE2900400) is the Linux
+    console; UART2 (0xE2900800) is the internal peripheral bus, held open by the
+    vendor application, AND it is the same hardware block the mask ROM uses for
+    UART boot; UART3 idle. On the board we worked on the console is brought out on
+    a DB9 as pins 1 TX / 4 RX / 5 GND at RS-232 levels, while the analog-board
+    connector carries UART2, also at RS-232 levels because a MAX3232-class
+    transceiver sits on that other board; its 4-wire cable is pin 1 +5 V, pin 2
+    GND, pin 3 board RX (idle high, the host's TX target), pin 4 board TX (the
+    0xAA/0xCC and ROM console egress). Two consequences: the ROM's UART downloader
+    is reachable on that connector, and a 3.3 V TTL tap needs its own transceiver
+    in between (a plain USB-RS-232 adapter connects directly). The Linux console
+    and the ROM boot port are different physical connectors, so a chain-load should
+    watch both.
+  evidence:
+    kind: observation
+    summary: >-
+      /proc/tty/driver/ttySAC on a healthy board plus a scope check of the
+      connector's TX line (clean full-swing +-5 V during the ROM's 0xAA stream).
+  author: xelth
+  date: 2026-09-13
+
+- id: kb_finding:ka4th2tuclj4es4gbad2
+  kind: re_fact
+  anchors: {chip: s5pv210, concept: chain_load}
+  confidence: high
+  status: verified
+  text: >-
+    Chain-loading a full bootloader into an S5PV210 over UART, working around the
+    ROM's 0x15400-byte per-transaction limit. Take the board's OWN first stage (the
+    first 8 KB of its own bootloader image — it already contains that board's DRAM,
+    clock and pin-mux bring-up), redirect its storage-copy dispatcher into a region
+    of the image that becomes unreachable once the dispatcher is redirected, and
+    put there a routine that: (1) calls the ROM's own UART download subroutine
+    (0xD0008640, arguments port / mode 0x23 / destination / max length) for a
+    4-byte packet carrying LE32(total second-stage length) into a scratch address
+    in internal SRAM; (2) loops calling it again for each slice straight into DDR
+    at the second stage's link address, advancing by the length the ROM reports it
+    received; (3) replays the ROM's NAND-controller and ECC bring-up; (4) stamps
+    the boot-device register INFORM3 (0xE010F00C) = 2 (NAND) and falls into the
+    first stage's own stack/bss setup and jump. CRITICAL: every download call must
+    be RETRIED UNTIL IT RETURNS 0. The downloader waits only ~1.5 s (5 x 300 ms)
+    for the host, and the host is routinely not ready on the first try; a first
+    revision that ignored the return code jumped into unwritten DDR and the board
+    went silent with its LEDs back to the normal pattern, which reads as "the first
+    stage crashed" and sends you debugging the wrong thing. Retry the SAME call
+    with the SAME destination and do not advance the pointer. Proven with a 917504
+    byte second stage delivered in 11 slices of 0x15000 (~7.5 s each at 115200)
+    after an 8192 byte first stage.
+  evidence:
+    kind: re_function
+    path: evidence/chain-bl1-injected-routine.txt
+    summary: >-
+      Capstone listing of the routine WE inject (our own code, annotated) — the
+      retry-until-zero header and slice loops, the NAND/ECC replay stores, the
+      INFORM3 stamp and the literal pool.
+  author: xelth
+  date: 2026-09-13
+
+- id: kb_finding:1ls66vjcbwlpm9394x9o
+  kind: re_fact
+  anchors: {chip: s5pv210, concept: nand_ecc_bringup}
+  confidence: high
+  status: verified
+  text: >-
+    Why a Samsung-lineage U-Boot 1.3.4 prints its banner up to "NAND: <size> MB"
+    and then hangs silently forever when it was loaded into DDR over the ROM's UART
+    boot, while the identical binary booted from NAND works. The window between the
+    two prints is nand_init() (which prints the size) and env_relocate(). nand_scan
+    only issues RESET/READID, status-polled and ECC-free, which is why the size
+    still prints. env_init in the classic env_nand.c sets gd->env_valid = 1
+    unconditionally, so env_relocate_spec() always runs; it is a switch on the
+    boot-device register INFORM3 (0xE010F00C) and both boot paths land in the NAND
+    branch, which performs the FIRST real ECC-protected page read of the session to
+    fetch the saved environment. The S5PV210 NAND driver in this U-Boot has four
+    unbounded, timeout-free hardware polls — NFSTAT bit 0 (ready/busy), NFECCSTAT
+    bit 25 (encode done), bit 24 (decode done) and bit 31 (busy) — each five
+    instructions with no printf, and board_nand_init programs almost nothing (it
+    clears one NFCONT bit) and inherits the controller state from whatever ran
+    before it. After a UART fallback the whole ECC block at 0xB0E20000 is at reset
+    defaults and NFCONF[24:23] is 0b00 instead of 0b11, so the decoder is
+    configured for a different message length and ECC type than the driver assumes
+    and the done bit never asserts. FIX: replay the ROM's NAND-boot bring-up in the
+    chain first stage before jumping. RULED OUT by reading, not guessing: PWM timer
+    4, which the ROM's UART helper leaves armed with its interrupt enabled —
+    U-Boot's timer_init rewrites those registers and interrupts are masked from the
+    first instruction of the first stage with no interrupt-controller enable
+    anywhere. DIAGNOSTIC that separates the two hypotheses in one boot: write
+    INFORM3 = 0 after the download loop, which makes the environment dispatch fall
+    through to use_default(), print its warning and reach the prompt without
+    touching NAND at all.
+  evidence:
+    kind: re_function
+    summary: >-
+      Static disassembly (capstone) of the bootloader image the user supplies:
+      start_armboot, nand_init, env_relocate, env_relocate_spec, the four
+      timeout-free polls and board_nand_init. No listing of that image is
+      published; the code PATTERNS are described so the analysis is reproducible on
+      your own image.
+  author: xelth
+  date: 2026-09-13
+
+- id: kb_finding:ai9woq1s20fi2f829r3r
+  kind: repair_outcome
+  anchors: {chip: s5pv210, concept: chain_load}
+  confidence: high
+  status: verified
+  text: >-
+    The full S5PV210 UART rescue chain ran end to end on a bench board, 2026-09-13:
+    NAND defeated by the data-line short -> ROM UART fallback -> our chain first
+    stage accepted -> the whole 917504-byte bootloader pulled into DDR over UART in
+    11 slices -> jump -> the bootloader reads the kernel out of NAND and Linux
+    reaches userland. 13 transactions, 917504/917504 bytes delivered, 26760 bytes
+    of console captured on the second UART including the bootloader banner, the
+    kernel boot and the init system's first messages. 203 s from power-on to
+    userland: ~45 s of ROM NAND/SD timeouts, 0.7 s for the 8 KB first stage, then
+    11 x 86 KB at ~7.5 s each plus ~3.6 s of handshakes. Three separate defects had
+    to be fixed to get there and ALL THREE were on the host/loader side, none in
+    the hardware: (a) the host frame must be contiguous, the wait-for-silence
+    approach is wrong; (b) the chain first stage ignored the ROM downloader's
+    return code; (c) the chain first stage jumped to the bootloader without
+    replaying the ROM's NAND/ECC bring-up. Operationally the whole run is one verb
+    on the tap plus one physical action (short, power on, release), and the images
+    live in the tap's own flash — fetched once over HTTP in ~3 s, against ~25
+    minutes to stage the same bytes as base64 through a console.
+  evidence:
+    kind: bench_log
+    summary: >-
+      Tap report for the run: one line per transaction (first stage / header /
+      part n of 11) with bytes, elapsed and receipt count, the byte histogram, and
+      the tail of the passively watched console showing the kernel coming up.
+  author: xelth
+  date: 2026-09-13
+
+- id: kb_finding:m8r5wum41b4cto6n952r
+  kind: repair_heuristic
+  anchors: {chip: s5pv210, concept: console_autoboot_stop}
+  confidence: high
+  status: verified
+  text: >-
+    Class of behaviour worth recognising on vendor builds of U-Boot 1.3.4 in this
+    lineage: autoboot can be stopped from the console alone — no NAND short, no
+    second connector, no disassembly — but not by the mechanism the documentation
+    describes. Such an abortboot() ignores bootdelay and opens its window only if a
+    character is ALREADY PENDING in the console receiver at the single instant it
+    checks (right after a fixed banner line); nothing pending and autoboot proceeds
+    with no prompt and no second chance. If a byte is pending it prints the "Hit
+    any key to stop autoboot" countdown and reads characters during a 3 s window,
+    and those characters must spell a short stop WORD chosen by the vendor, while
+    anything read before the first correct character merely burns a countdown tick.
+    The receiver behaves as a one-byte holding register (the last byte received is
+    the pending one) and something between the banner and the check flushes it, so
+    a single early byte is lost. TECHNIQUE: keep the FIRST letter of the word
+    permanently pending from before power-on by rewriting it every ~15 ms (far more
+    often than the flush-to-check gap, far less often than a byte time at 115200),
+    and the instant the countdown line appears in the stream stop that letter and
+    write the REST of the word within a millisecond or two, with nothing in
+    between — a letter written after the countdown starts lands where the second
+    letter belongs and kills the word. That reaction time is why this belongs in a
+    tap's firmware and not in a host loop over USB. The crude variant — stream the
+    whole word continuously at ~9 sends/s from before power-on — also works and
+    needs no state machine, but on some builds it is a lottery (roughly one boot in
+    three) because something between the banner and the check consumes or reorders
+    the pending bytes; when it is a lottery, the ROM chain-load is the deterministic
+    path. Once at the prompt, `setenv bootargs ... init=/bin/sh` + `nand read` +
+    `bootm` gives a root shell in about 20 s with nothing written to NAND.
+  evidence:
+    kind: bench_log
+    summary: >-
+      Console log of a proven run on a board whose init never reached a getty:
+      banner at +48 s after power-on, stop seen +51.8 s, prompt, then a root shell
+      via init=/bin/sh; plus the disassembly of that build's abortboot().
+  author: xelth
+  date: 2026-09-14
+
+- id: kb_finding:wjca6hkifegra44evx20
+  kind: repair_outcome
+  anchors: {chip: s5pv210, concept: nand_ecc_bringup}
+  confidence: high
+  status: verified
+  text: >-
+    The chain first stage must carry the NFCONF value of the board's OWN software
+    generation, not a constant. Two first stages from consecutive generations of
+    the same board family were instruction-for-instruction identical except for a
+    single literal: the value their lowlevel_init programs into NFCONF —
+    0x3332 (TACLS/TWRPH timings 3, PageSize bit 0) in the older build versus
+    0x7776 (timings 7, PageSize bit 1) in the newer one. A chain first stage that
+    hard-codes the newer value over the older board silently re-times its NAND: the
+    bootloader region reads perfectly and every later read comes back ECC
+    uncorrectable, while the stock NAND boot of the same board reads fine and a raw
+    dump shows the data itself is intact. Verified at the prompt — writing the
+    board's own value into NFCONF by hand turned the kernel read from ECC errors
+    into OK, and a rebuilt first stage carrying that value read it clean from the
+    start. RULE: take the NFCONF literal from the source first stage by
+    disassembling it (build_chain_bl1.py does this) and OR only the ECC-select bits
+    [24:23] onto it; and fetch BOTH stages of the board's own generation. Second
+    lesson from the same session: do not run a whole-filesystem `du` in a rescue
+    shell on these boards — one reset itself after several minutes of a quiet shell
+    (watchdog suspected), losing the session. Keep rescue shells short and their
+    commands fast.
+  evidence:
+    kind: bench_log
+    summary: >-
+      Prompt session: a single register write flipping the kernel-region read from
+      ECC-uncorrectable on every chunk to OK, then a clean read after rebuilding
+      the first stage from that board's own image.
+  author: xelth
+  date: 2026-09-14
