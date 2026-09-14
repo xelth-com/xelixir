@@ -1,0 +1,229 @@
+# kb/research/nand-retention/findings.yaml
+#
+# Sanitised export, same rules as every slice: the meaning is untouched, the vendor
+# specifics (product names, unit serials, product paths) are replaced by the class.
+# Findings that were recorded on xelth's knowledge base keep their server id.
+# Findings that originate here have no id yet - one is assigned when they are
+# ingested - they carry `id: pending` until the export bot fills it in.
+#
+# Licence: CC BY 4.0 (see ../../LICENSE). Schema: tools/kb/check_findings.py.
+
+- id: kb_finding:5y9zcx38imfzbgy04i4i
+  kind: re_fact
+  anchors: {chip: s5pv210, concept: nand_retention, storage: slc_nand_yaffs2}
+  confidence: high
+  status: verified
+  text: >-
+    Storage identity of the board class in which retention bit-rot keeps turning
+    up: a single Samsung K9K8G08U0x-family SLC die (manufacturer ID 0xEC, chip ID
+    0xD3, 8 Gbit, 3.3 V, x8), 2 KiB pages, 128 KiB erase blocks, driven by the S3C
+    NAND controller with 1-BIT hardware ECC, under a 2.6.32 kernel with a yaffs2
+    rootfs on a raw MTD partition. Read speed through dd is about 2.1 MB/s.
+    Note two traps in the numbers a system of this kind reports about itself: the
+    bootloader's own "NAND: <n> MB" line comes from its ID table and can disagree
+    with the truth by a factor of two, so trust the kernel's MTD totals; and an
+    empty SD/MMC slot printing a card-init failure at boot is normal, not a fault.
+    Every unit in which we have found retention rot so far carries this exact chip,
+    and in every case the chip itself erased and programmed cleanly - the rot is
+    retention loss in pages that were written once at the factory and never
+    rewritten, not wear and not a defective die.
+  evidence:
+    kind: observation
+    summary: >-
+      Boot console of an affected unit (NAND manufacturer/chip ID line, MTD
+      partition table, erase size) plus dd throughput measured on the same board.
+  author: xelth
+  date: 2026-09-07
+
+- id: kb_finding:gzjnpmzp1dubclq936p3
+  kind: repair_outcome
+  anchors: {concept: nand_retention, storage: slc_nand_yaffs2}
+  confidence: high
+  status: verified
+  text: >-
+    Retention bit-rot reaches DIRECTORY ENTRIES, not just file contents, and the
+    resulting failure looks nothing like a storage problem. Case: a seven-year-old
+    board whose application crash-looped at boot, showing only a splash screen; its
+    log repeated a deterministic cycle - full UI and serial init fine, then an X
+    Window System error "BadAlloc (insufficient resources for operation),
+    request_code 45" (X_OpenFont) at the SAME request serial every cycle, after
+    which a supervisor restarted the application forever. ROOT CAUSE: single-bit
+    and single-byte flips in the FILENAME bytes of X11 bitmap fonts - '-' (0x2D)
+    dropped, '.' (0x2E) -> 0x06, 'f' (0x66) -> 'F' (0x46), '-' -> carriage return -
+    so fonts.dir still listed names whose files no longer existed and the X server
+    failed the font open. A full-rootfs md5 sweep (31502 files, ZERO read errors,
+    only three ECC-uncorrectable kernel messages) against two healthy siblings that
+    matched each other byte-for-byte found roughly 170 further rotten cold-data
+    files - documentation, static libraries, unused display drivers - all
+    non-functional, plus 14 filesystem orphans and flipped names in four of six
+    font directories. DIAGNOSIS that works with no reference device is a per-
+    directory digest (`find DIR -type f | sort | xargs md5sum | md5sum`) compared
+    against any healthy unit of the same generation; two healthy units agreeing is
+    what isolates the rotten one. REPAIR: restore the affected directories from a
+    healthy sibling, then delete the bit-flipped garbage names - a plain rm by the
+    displayed name FAILS, because the name contains control bytes; find them with
+    `od -c` - and re-digest until byte-identical.
+  evidence:
+    kind: capture
+    summary: >-
+      Application log showing the deterministic BadAlloc(OpenFont) cycle; a
+      full-rootfs md5 audit of 31502 files with zero read errors; font-directory
+      digests differing from two byte-identical healthy siblings; the flipped
+      filename bytes revealed by od -c.
+  author: xelth
+  date: 2026-08-03
+
+- id: kb_finding:oqmaxo3zss3ememwb3ps
+  kind: repair_outcome
+  anchors: {concept: nand_retention, method: md5_manifest_diagnosis}
+  confidence: high
+  status: verified
+  text: >-
+    Diagnosing retention rot WITHOUT a reference device, using the rootfs's own
+    package manifests - and the proof that the ECC statistics must not be used as
+    the diagnostic. Case: a board booted, the display server started, and the main
+    application died instantly with SIGSEGV, never reaching its own init messages.
+    Under catchsegv the faulting program counter mapped, through the process memory
+    map, to one shared library; that library had the same size and the same package
+    version as a healthy unit's copy but a different md5, and the board's OWN
+    manifest (/var/lib/dpkg/info/<package>.md5sums, written at packaging time) said
+    so - `md5sum -c` reported FAILED. THE COUNTERS SAID NOTHING: the filesystem's
+    eccFixed/eccUnfixed stayed at 0/0 while that file was read, and rose only to
+    eccUnfixed=2 after a full sweep - because a 1-bit ECC controller MIS-CORRECTS a
+    three-bit flip silently. RECIPE, in order: (1) run the failing binary under
+    catchsegv and map the PC to a library; (2) `cd / && md5sum -c
+    /var/lib/dpkg/info/<pkg>.md5sums` for that library; (3) full sweep -
+    `for f in /var/lib/dpkg/info/*.md5sums; do md5sum -c $f | grep -v ': OK$'; done`
+    - which here returned 28 failing files of which exactly ONE was
+    runtime-relevant, the rest being documentation, static libraries, locale and
+    font data written once at the factory. FIX: copy the healthy file from a unit of
+    the same generation, cp then mv into place, keep the rotten copy for analysis;
+    the application started by itself after a clean reboot. Two operational notes:
+    pushing a file through a slow serial console must be PACED and verified in
+    chunks (a single unpaced base64 stream fails - one dropped byte aborts the
+    decoder and the remainder of the stream is executed by the shell); and a vendor
+    application update does NOT fix this, because it replaces only the application
+    directory and leaves the rotten system files in place.
+  evidence:
+    kind: capture
+    summary: >-
+      catchsegv register dump locating the faulting PC inside one shared library;
+      that library reported FAILED by the board's own dpkg md5sums manifest; the
+      healthy unit's digest for the same package version; process list after the
+      fix showing the application running.
+  author: xelth
+  date: 2026-09-12
+
+- id: pending
+  kind: re_fact
+  anchors: {concept: nand_retention, filesystem: yaffs2}
+  confidence: high
+  status: verified
+  text: >-
+    yaffs2 will not repair retention rot for you, and it will hand you rotten data
+    without saying so. Read of the yaffs2 sources (yaffs_guts.c, yaffs_yaffs2.c,
+    yaffs_nand.c): there is NO background scrubber and no time-based refresh; wear
+    levelling is implicit, in that new chunks go to fresh blocks, so a file nobody
+    writes is never moved. Error handling is purely reactive - a read whose ECC
+    result is FIXED or UNFIXED calls yaffs_handle_chunk_error(), which prioritises
+    that block for garbage collection, and more than three strikes marks it for
+    retiring - but garbage collection copies live chunks AS THEY ARE, without
+    re-deriving anything, and THE DATA IS RETURNED TO THE CALLER EVEN WHEN IT WAS
+    UNCORRECTABLE. The one time-like mechanism, refresh_period (default 500: every
+    500 GC selections the oldest full block is collected), is driven by WRITE
+    activity, so a rootfs nobody writes never triggers it, and vendor 2.6.32 trees
+    may predate the feature. CONTRAST: UBI scrubs a physical erase block on the
+    first -EUCLEAN (copy to a fresh block, torture-test the old one) and moves
+    static data when the erase-counter spread exceeds its threshold - better, but
+    still reactive; and on 2.6.32 any corrected bit is -EUCLEAN, the bitflip
+    threshold gate arriving only in 3.5. CONSEQUENCE: on these boards a refresh is
+    an operator's scheduled job. Nothing in the stack will do it.
+  evidence:
+    kind: observation
+    summary: >-
+      Source reading of the yaffs2 chunk-error, garbage-collection and
+      refresh_period paths, and of the UBI scrub and wear-levelling thresholds, on
+      the versions these boards ship.
+  author: xelth
+  date: 2026-09-07
+
+- id: pending
+  kind: repair_heuristic
+  anchors: {concept: nand_retention, method: rootfs_refresh}
+  confidence: high
+  status: verified
+  text: >-
+    Refreshing a whole yaffs2 rootfs with nothing but coreutils, and the order of
+    operations that makes it safe. WHY IT WORKS: on a log-structured filesystem a
+    copy-and-rename lands the data in erased blocks with fresh ECC and leaves the
+    old chunks dirty for garbage collection, which restarts both the retention and
+    the read-disturb clock; the cell is fine, only its stored charge had decayed.
+    ORDER PER UNIT, and getting it wrong is permanent: (1) an md5 sweep against the
+    rootfs's own package manifests or a healthy sibling, and RESTORE every mismatch
+    FIRST - a 1-bit ECC controller mis-corrects a three-bit flip silently, so
+    refreshing an already-wrong file writes the wrong bytes back with a brand-new
+    valid ECC and the damage becomes undetectable; (2) the file pass; (3) the raw
+    kernel and bootloader partitions separately, via nanddump -o -b -> verify ->
+    flash_erase -> nandwrite -p, bad-block aware, the first block only with the
+    layout the boot ROM expects. THE FILE PASS, per regular file on the same
+    device: cp -p to a sibling temporary name, cmp the copy against the original
+    (differing reads = an unstable page: log it and LEAVE THE FILE ALONE), then mv
+    onto the original - atomic, and a process holding the file keeps its old inode,
+    so the application need not be stopped for correctness. Hard-link groups must
+    never be rewritten in place: a truncate-and-write is not atomic and a
+    concurrent reader sees a torn file; mv onto the first name, then re-point every
+    other name of the old inode with ln -f. Take an ATOMIC lock (mkdir) - two
+    instances racing on one file corrupted two hard-link groups on a unit where a
+    test-then-create lock let both in. Refuse to start when free space is below the
+    largest file plus a margin, or the filesystem is over ~90% full. Afterwards
+    rewrite the DIRECTORY object headers, which file traffic never touches
+    (touch -c -r "$d" "$d"), and drive garbage collection by filling most of the
+    free space with one throwaway file and deleting it, so the dirty blocks are
+    erased now rather than whenever something happens to need them. Stop the
+    application that owns the rootfs if you can: yaffs2 has one writer lock, so the
+    pass is 5-8x faster and there is no second writer. CADENCE: every 2-3 years, at
+    once on any eccFixed/eccUnfixed increase (they understate), annually if the
+    unit runs warm or you also want to cover the read-disturb budget. Wear cost of
+    an annual pass is under 1% of a 100000-cycle budget per decade.
+  evidence:
+    kind: observation
+    path: ../../../tools/nand-refresh/nandfresh.sh
+    summary: >-
+      The procedure as an implementation: preflight, per-file copy/compare/rename,
+      hard-link group handling, atomic lock, directory-header pass, GC fill, and a
+      before/after dump of the filesystem's own counters.
+  author: xelth
+  date: 2026-09-07
+
+- id: pending
+  kind: re_fact
+  anchors: {concept: nand_retention, topic: physics}
+  confidence: med
+  status: verified
+  text: >-
+    The physics behind scheduling a refresh, with the numbers that decide the
+    cadence. SLC NAND is rated for roughly 100000 program/erase cycles AND about 10
+    years of retention, but not simultaneously: JESD47 qualifies 10 years at up to
+    10% of rated endurance and 1 YEAR at 100%, and retention scales roughly
+    inversely with cycling. Arrhenius behaviour with Ea about 1.1 eV puts published
+    SLC curves near 10 years below 35 C and near 1 year at 55 C for a cycled block,
+    so a board in a warm cabinet ages considerably faster than the datasheet
+    headline. Read disturb is a separate budget of order 1e6 reads per block for
+    SLC, and every erase resets it. Re-programming a page RESETS BOTH CLOCKS,
+    because this is charge drift and not oxide damage - which is why flash vendors'
+    own application notes list refreshing data blocks after a predefined time as a
+    supported mitigation, why SSD firmware does it as read-reclaim, and why the
+    academic version is called Flash Correct-and-Refresh. The wear cost of a yearly
+    full-filesystem refresh is well under 1% of a 100000-cycle budget per decade,
+    so the trade is not close. Finally, the detection limit: 1-bit ECC corrects one
+    flip per 512 B, detects two, and MIS-CORRECTS three silently - therefore any
+    uncorrectable-error counter understates the real rot, and manifest comparison,
+    not the counters, is the diagnostic.
+  evidence:
+    kind: observation
+    summary: >-
+      Published flash-endurance and retention application notes, the JEDEC
+      stress-test qualification, read-disturb characterisation work, and the
+      Correct-and-Refresh literature; collated and cross-checked 2026-09-07.
+  author: xelth
+  date: 2026-09-07

@@ -81,10 +81,13 @@ def check_finding(f, where, bad, proposal):
     fid = f.get("id")
     if fid is None:
         if not proposal:
-            bad(where, "a finding in kb/ must carry its server id "
-                       "(proposals may omit it)")
+            bad(where, "a finding in kb/ must carry its server id, or the literal "
+                       "'pending' if it originated here and has not been ingested "
+                       "yet (only proposals/ may omit the key entirely)")
+    elif str(fid) == "pending":
+        pass  # originated in this repository; an id is assigned on ingest
     elif not ID_RE.match(str(fid)):
-        bad(where, "id %r is not kb_finding:<slug>" % fid)
+        bad(where, "id %r is not kb_finding:<slug> (or 'pending')" % fid)
 
     if f.get("kind") not in KINDS:
         bad(where, "kind %r not one of %s" % (f.get("kind"), sorted(KINDS)))
@@ -162,7 +165,7 @@ def check_findings_file(path, bad):
         where = "%s:[%d]" % (rel, i)
         check_finding(f, where, bad, proposal)
         fid = isinstance(f, dict) and f.get("id")
-        if fid:
+        if fid and fid != "pending":
             if fid in seen:
                 bad(where, "duplicate id %s in the same file" % fid)
             seen.add(fid)
