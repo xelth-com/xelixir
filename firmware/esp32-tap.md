@@ -15,7 +15,7 @@ the firmware — or write your own, or teach an existing tap the same tricks. Th
 firmware itself is not vendored here.
 
 > **Where to get it:** the `xlt_agent` firmware, ESP-IDF project, MIT-licensed
-> (see its own `LICENSE`). Ask us for the current repository location — the pointer
+> (see its own `LICENSE`). It is published under the `xelth-com` GitHub organisation (repository `xlt_agent`, being extracted from our monorepo) — the pointer
 > from this file to a public URL is one of the open items in
 > `agents/README.md`. It carries **no board payloads**: the images a rescue uses are
 > fetched or staged at run time, because the payload belongs to whoever owns the

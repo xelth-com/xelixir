@@ -1,6 +1,6 @@
 ---
 name: xelth-esp32-tap
-repo: https://github.com/ORG-TO-BE-NAMED/xlt_agent
+repo: https://github.com/xelth-com/xelth-open
 maintainer: xelth
 base: none
 targets: [chips/s5pv210, research/nand-retention]
