@@ -114,7 +114,7 @@ paid for with knowledge — or with money, for those in a hurry.
 |---|---|---|---|
 | public slice | this repository (`kb/**`) | curated guides + findings older than the 12-month embargo, or donated by their author | free, CC BY 4.0 |
 | live KB | xelth server (`kb_search`, `kb_brief`, slice pull, evidence artefacts) | every shared finding including fresh ones, semantic search, per-device procedures | credits (XC) |
-| tenant KB | xelth server, firm-scoped | a firm's own private findings | included in the firm licence |
+| private layer | xelth server, per firm or user | findings you keep to yourself; quota by tier (free: small, paid: much larger, firm licence: largest) | included |
 
 * Every new account starts with **300 XC** — enough for a couple of projects. A
   finding returned in full costs 1 XC, once per account; a whole slice is priced at
@@ -125,6 +125,11 @@ paid for with knowledge — or with money, for those in a hurry.
   evidence you brought (files, captures, boards; capped ×3). A second party
   verifying it later adds 50 %. For twelve months you also earn a **10 % royalty**
   on what others spend on your finding — quality keeps paying, spam does not.
+* **You decide what goes public.** Everything you record can start private (set
+  `default_visibility: private` on your account); nobody but your firm sees it, it
+  never reaches this repository or the public export. Publishing a private finding
+  (`kb_publish`) sends it to review and earns as above; it costs you nothing but the
+  private room it no longer takes up.
 * Nothing is credited before review; deny-list material earns nothing and is
   revoked. Money buys the same credits instantly (100 XC = 1 €).
 
