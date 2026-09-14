@@ -1,6 +1,6 @@
 ---
 name: xelth-esp32-tap
-repo: https://github.com/xelth-com/xelixir-agents
+repo: https://github.com/xelth-com/xelixir
 maintainer: xelth
 base: none
 targets: [chips/s5pv210, research/nand-retention]
