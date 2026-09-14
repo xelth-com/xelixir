@@ -41,7 +41,7 @@ def fetch_online(slice_name, limit=500):
     import urllib.request
     anchor = slice_name.rstrip("/").split("/")[-1]
     url = ONLINE_ENDPOINT.format(anchor=anchor, limit=int(limit))
-    req = urllib.request.Request(url, headers={"User-Agent": "xelth-open kb_pull"})
+    req = urllib.request.Request(url, headers={"User-Agent": "xelixir-agents kb_pull"})
     with urllib.request.urlopen(req, timeout=ONLINE_TIMEOUT) as r:
         data = json.loads(r.read().decode("utf-8"))
     if isinstance(data, dict):

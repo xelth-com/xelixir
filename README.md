@@ -1,4 +1,4 @@
-# xelth-open
+# xelixir-agents
 
 **A knowledge base you can run.** Open tools for repairing and reverse-engineering
 embedded boards, organised around the *facts* the tools encode — not the other way
