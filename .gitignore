@@ -1,0 +1,21 @@
+# Never in this repository: vendor binaries, ROM dumps, disassembly artefacts.
+*.bin
+*.dis
+*.elf
+*.img
+*.rom
+*.pdf
+*.tgz
+*.tar.gz
+*.zip
+dumps/
+dump/
+*.dump
+*.raw
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/

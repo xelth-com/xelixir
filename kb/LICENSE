@@ -1,0 +1,26 @@
+Knowledge slices — Creative Commons Attribution 4.0 International (CC BY 4.0)
+============================================================================
+
+Everything under `kb/` — the curated slice guides (`README.md`), the findings
+(`findings.yaml`) and the evidence files — is licensed under CC BY 4.0:
+
+    https://creativecommons.org/licenses/by/4.0/
+
+You may share and adapt the facts, including commercially, as long as you give
+appropriate credit, link to the licence, and indicate whether you changed
+anything. A finding you reuse is credited by its `id` and `author` fields.
+
+The rest of the repository (`tools/`, `recipes/`, `firmware/`, `agents/`,
+`proposals/`, CI) is MIT — see `../LICENSE`.
+
+Why the split: code rots and gets rewritten, so it wants the most permissive
+licence there is. Facts are the durable part and they want attribution, because
+attribution is what lets the next person judge how far to trust a fact and where
+to go to argue with it.
+
+Findings are *observations about hardware we do not own and did not design*.
+They are recorded for interoperability and repair. Reverse engineering for
+interoperability is lawful in the EU (Directive 2009/24/EC art. 6); the facts
+in this repository were obtained that way. No vendor firmware, no vendor ROM
+dump and no derivative of either is distributed here — see `../CONTRIBUTING.md`
+for the deny-list that keeps it that way.

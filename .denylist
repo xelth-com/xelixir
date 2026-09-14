@@ -1,0 +1,48 @@
+# .denylist — patterns that must never appear in this repository.
+#
+# Format: one Python regular expression per line. Blank lines and lines starting
+# with '#' are ignored. Matching is case-insensitive and applied to every tracked
+# text file. `tools/kb/denylist.py` runs the scan; CI runs it on every push. The
+# scanner does not scan itself or this file (they necessarily contain the
+# patterns).
+#
+# A rule may carry a human label after a '  ##  ' separator; the scanner prints it
+# when the rule fires, so a contributor learns WHY, not just THAT.
+#
+# Nothing here is about hiding knowledge. It is the line between publishing a
+# technique and redistributing somebody else's product. See CONTRIBUTING.md §4.
+
+# --- protected device / vendor product names -----------------------------------
+\bin[-_]?body\b                     ##  vendor product family — say "the board we worked on"
+\blookin[-_]?body\b                 ##  vendor application name
+\bbiospace\b                        ##  vendor name
+\bdno[0-9]\b                        ##  vendor board-generation code
+\blb_data\b                         ##  vendor data directory
+/biospace                           ##  vendor filesystem layout
+
+# --- unit / board serial number patterns ---------------------------------------
+\bF9[0-9]{7}\b                      ##  unit serial
+\bI8[0-9]{7}\b                      ##  unit serial
+\bG6[0-9]{7}\b                      ##  unit serial
+\bMD3D[0-9A-Z]{6,}\b                ##  main-board serial
+
+# --- vendor secrets ------------------------------------------------------------
+\bdno\b                             ##  the vendor's bootloader stop word — say "the vendor's stop word"
+[A-Za-z0-9._%+-]+@xelth\.com        ##  private contact address
+
+# --- vendor NAND / environment layout ------------------------------------------
+0x0?b[08]0000\b                     ##  vendor NAND environment/mode block address
+block(s)?[ ]+(88|92)\b              ##  vendor NAND block roles
+bootargs[ ]+block                   ##  vendor NAND block roles
+
+# --- file offsets inside a vendor image, quoted as product facts ----------------
+0x17dec\b                           ##  offset in a vendor bootloader image
+0x36450\b                           ##  offset in a vendor bootloader image
+0x2fe[0-9a-f]{5}\b                  ##  vendor-image link address / offset
+# Describe the CODE PATTERN a tool matches on instead, and let the tool locate the
+# offset by disassembling the image the user already holds.
+
+# --- artefacts that must not be committed at all -------------------------------
+# A rule prefixed with 'path:' is matched against the FILE PATH instead of the
+# file's content. (These extensions are also in .gitignore; this catches a -f add.)
+path:\.(bin|dis|rom|img|elf|pdf|tgz|zip)$   ##  vendor binary / disassembly / datasheet

@@ -1,0 +1,47 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: install pyyaml
+        run: python -m pip install --quiet pyyaml
+
+      # Nothing that must never be published may enter the repository: vendor
+      # product names, unit/board serials, vendor binaries or derivatives, vendor
+      # stop words, file offsets inside somebody else's image. See CONTRIBUTING.md
+      # section 4 and .denylist.
+      - name: deny-list scan
+        run: python tools/kb/denylist.py
+
+      # Every finding is machine-readable and carries id/kind/anchors/confidence/
+      # status/text/author/date; every agents/<name>.md names slices that exist
+      # and links them in its body.
+      - name: findings + agent-registry schema
+        run: python tools/kb/check_findings.py
+
+      # A slice must be pullable with the tool contributors are told to use.
+      - name: slices are pullable
+        run: |
+          python tools/kb/kb_pull.py --slices
+          for s in $(python tools/kb/kb_pull.py --slices); do
+            python tools/kb/kb_pull.py "$s" --list
+          done
+
+      - name: python tools import cleanly
+        run: |
+          python -m py_compile $(git ls-files '*.py')
+
+      - name: shell tools parse
+        run: |
+          for f in $(git ls-files '*.sh'); do sh -n "$f"; done
