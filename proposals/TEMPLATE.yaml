@@ -1,0 +1,38 @@
+# proposals/TEMPLATE.yaml — copy me to proposals/<slug>.yaml
+#
+# A LIST of findings (usually one). No `id` key: an id is assigned on ingest.
+# Validate with:  python tools/kb/check_findings.py
+#                 python tools/kb/denylist.py
+
+- kind: observation
+  # protocol | re_fact | observation | hypothesis | repair_heuristic |
+  # repair_outcome | negative        <- negatives are welcome and useful
+
+  anchors: {chip: s5pv210, concept: irom_uart_boot}
+  # At least one. Use the anchors the slice already uses; invent one only for
+  # something genuinely new, and say so in the PR.
+
+  confidence: low
+  # high | med | low. Contributed findings are capped at med until reproduced
+  # here; low is a respectable value and beats a confident guess.
+
+  status: proposed
+
+  text: >-
+    What you found, in English, self-contained: readable in three years by
+    somebody who never saw this pull request. Units and register addresses
+    explicit, with the block each register belongs to. Say what you did NOT see
+    as well as what you did. If a plausible approach failed, say how far it got
+    before it failed - that is the part that saves the next person a week.
+
+  evidence:
+    kind: observation      # re_function | capture | observation | measurement | bench_log
+    # path: evidence/my-capture.txt     # optional; relative to the slice directory
+    summary: >-
+      What the evidence shows, in one or two sentences - not what it is called.
+
+  author: <your github handle>
+  date: 2026-01-01
+
+  # supersedes: kb_finding:...   # only when this CORRECTS an existing finding;
+  #                              # the old one is then marked refuted, never edited
